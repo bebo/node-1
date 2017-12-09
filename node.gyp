@@ -1,5 +1,6 @@
 {
   'variables': {
+    'icu_gyp_path%': '../icu/icu.gyp',
     'v8_use_snapshot%': 'false',
     'v8_trace_maps%': 0,
     'node_use_dtrace%': 'false',
@@ -8,19 +9,33 @@
     'node_use_perfctr%': 'false',
     'node_no_browser_globals%': 'false',
     'node_use_v8_platform%': 'true',
-    'node_use_bundled_v8%': 'true',
-    'node_shared%': 'false',
     'force_dynamic_crt%': 0,
+    'node_use_bundled_v8': 'false',
+    'node_shared': 'true',
+    'v8_enable_inspector': 1,
+    'debug_http2': 0,
+    'debug_nghttp2': 0,
+    'node_enable_d8': 'false',
     'node_module_version%': '',
     'node_shared_zlib%': 'false',
     'node_shared_http_parser%': 'false',
     'node_shared_cares%': 'false',
     'node_shared_libuv%': 'false',
-    'node_use_openssl%': 'true',
-    'node_shared_openssl%': 'false',
+    'node_use_openssl': 'true',
+    'node_shared_openssl': 'false',
+    'openssl_fips': '',
     'node_v8_options%': '',
     'node_enable_v8_vtunejit%': 'false',
     'node_core_target_name%': 'node',
+    'node_target_type%': 'shared_library',
+    'node_tag%': '',
+    'node_release_urlbase%': '',
+    'node_byteorder%': 'little',
+    'python%': 'python',
+    'icu_small%': 'false',
+    'v8_postmortem_support%' : 'false',
+    'V8_LIBBASE%': '<(PRODUCT_DIR)/../nw/obj/v8/libv8_libbase.a',
+    'V8_PLTFRM%': '<(PRODUCT_DIR)/../nw/obj/v8/libv8_libplatform.a',
     'library_files': [
       'lib/internal/bootstrap_node.js',
       'lib/async_hooks.js',
@@ -34,6 +49,7 @@
       'lib/dgram.js',
       'lib/dns.js',
       'lib/domain.js',
+      'lib/dummystream.js',
       'lib/events.js',
       'lib/fs.js',
       'lib/http.js',
@@ -165,26 +181,54 @@
     ],
   },
 
+  'includes': [
+    '../../build/util/version.gypi',
+  ],
+
   'targets': [
     {
       'target_name': '<(node_core_target_name)',
       'type': '<(node_target_type)',
-
       'dependencies': [
         'node_js2c#host',
         'deps/nghttp2/nghttp2.gyp:nghttp2'
+        ##'../../v8/tools/gyp/v8.gyp:v8',
+        #'../../v8/src/v8.gyp:v8_libplatform',
+        #'../../chrome/chrome.gyp:chrome_dll',
       ],
 
       'includes': [
         'node.gypi'
       ],
+      'msvs_disabled_warnings': [4146, 4267, 4003, 4065, 4477],
+
+      'xcode_settings': {
+        'WARNING_CFLAGS': [ '-Wno-error=deprecated-declarations' ],
+        'LD_RUNPATH_SEARCH_PATHS': [ '@loader_path/../../../../../../..', ],
+      },
 
       'include_dirs': [
         'src',
+        'deps/openssl/openssl/include',
+        #'../boringssl/src/include',
         'tools/msvs/genfiles',
         '<(SHARED_INTERMEDIATE_DIR)', # for node_natives.h
         'deps/nghttp2/lib/includes'
+        '../../v8', # include/v8_platform.h
+        '../../v8/include'
       ],
+
+      'direct_dependent_settings': {
+        'include_dirs': [
+          '../../v8/include',
+          'deps/uv/include',
+          'deps/cares/include',
+        ],
+        'defines': [
+          'BUILDING_NW_NODE=1',
+        ],
+
+      },
 
       'sources': [
         'src/async-wrap.cc',
@@ -286,8 +330,8 @@
         'src/util.h',
         'src/util-inl.h',
         'deps/http_parser/http_parser.h',
-        'deps/v8/include/v8.h',
-        'deps/v8/include/v8-debug.h',
+        #'deps/v8/include/v8.h',
+        #'deps/v8/include/v8-debug.h',
         # javascript files to make for an even more pleasant IDE experience
         '<@(library_files)',
         # node.gyp is added to the project by default.
@@ -305,6 +349,10 @@
         'NODE_WANT_INTERNALS=1',
         # Warn when using deprecated V8 APIs.
         'V8_DEPRECATION_WARNINGS=1',
+        'BUILDING_NW_NODE=1',
+        'V8_SHARED',
+        'USING_V8_SHARED',
+        'V8_USE_EXTERNAL_STARTUP_DATA',
         'NODE_OPENSSL_SYSTEM_CERT_PATH="<(openssl_system_ca_path)"',
       ],
       'conditions': [
@@ -339,7 +387,7 @@
         [ 'OS=="win"', {
           'sources': [
             'src/backtrace_win32.cc',
-            'src/res/node.rc',
+            #'src/res/node.rc',
           ],
           'defines!': [
             'NODE_PLATFORM="win"',
@@ -350,7 +398,7 @@
             'NODE_PLATFORM="win32"',
             '_UNICODE=1',
           ],
-          'libraries': [ '-lpsapi.lib' ]
+          'libraries': [ '-lpsapi.lib', '<(PRODUCT_DIR)/../nw/obj/v8/v8_libbase.lib', '<(PRODUCT_DIR)/../nw/obj/v8/v8_libplatform.lib', '<(PRODUCT_DIR)/../nw/nw.dll.lib' ]
         }, { # POSIX
           'defines': [ '__POSIX__' ],
           'sources': [ 'src/backtrace_posix.cc' ],
@@ -415,7 +463,7 @@
                 './deps/openssl/openssl.gyp:openssl',
 
                 # For tests
-                './deps/openssl/openssl.gyp:openssl-cli',
+                #'./deps/openssl/openssl.gyp:openssl-cli',
               ],
               'conditions': [
                 # -force_load or --whole-archive are not applicable for
@@ -423,16 +471,16 @@
                 [ 'node_target_type!="static_library"', {
                   'xcode_settings': {
                     'OTHER_LDFLAGS': [
-                      '-Wl,-force_load,<(PRODUCT_DIR)/<(OPENSSL_PRODUCT)',
+                      #'-Wl,-force_load,<(PRODUCT_DIR)/<(OPENSSL_PRODUCT)',
                     ],
                   },
                   'conditions': [
                     ['OS in "linux freebsd" and node_shared=="false"', {
                       'ldflags': [
-                        '-Wl,--whole-archive,'
-                            '<(OBJ_DIR)/deps/openssl/'
-                            '<(OPENSSL_PRODUCT)',
-                        '-Wl,--no-whole-archive',
+                        #'-Wl,--whole-archive,'
+                        #    '<(OBJ_DIR)/deps/openssl/'
+                        #    '<(OPENSSL_PRODUCT)',
+                        #'-Wl,--no-whole-archive',
                       ],
                     }],
                     # openssl.def is based on zlib.def, zlib symbols
@@ -557,7 +605,7 @@
               'action_name': 'v8_inspector_compress_protocol_json',
               'process_outputs_as_sources': 1,
               'inputs': [
-                'deps/v8/src/inspector/js_protocol.json',
+                '../../v8/src/inspector/js_protocol.json',
               ],
               'outputs': [
                 '<(SHARED_INTERMEDIATE_DIR)/v8_inspector_protocol_json.h',
@@ -584,6 +632,7 @@
           'inputs': [
             '<@(library_files)',
             './config.gypi',
+            'tools/js2c.py',
           ],
           'outputs': [
             '<(SHARED_INTERMEDIATE_DIR)/node_javascript.cc',
@@ -751,7 +800,6 @@
 
       'dependencies': [
         '<(node_core_target_name)',
-        'deps/gtest/gtest.gyp:gtest',
         'node_js2c#host',
         'node_dtrace_header',
         'node_dtrace_ustack',
@@ -797,7 +845,7 @@
       'include_dirs': [
         'src',
         'tools/msvs/genfiles',
-        'deps/v8/include',
+        '../../v8/include',
         'deps/cares/include',
         'deps/uv/include',
         '<(SHARED_INTERMEDIATE_DIR)', # for node_natives.h
@@ -912,7 +960,7 @@
         }],
         [ 'node_use_v8_platform=="true"', {
           'dependencies': [
-            'deps/v8/src/v8.gyp:v8_libplatform',
+            #'deps/v8/src/v8.gyp:v8_libplatform',
           ],
         }],
         ['OS=="solaris"', {
